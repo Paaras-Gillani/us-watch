@@ -195,6 +195,7 @@ $('shareBtn').addEventListener('click', async () => {
 
   $('shareBtn').textContent = 'Sharing…';
   $('shareBtn').disabled = true;
+  $('hostControls').classList.add('hidden');
 
   // Let the host see their own shared content, muted, so it's obvious
   // sharing is actually working — not just a spinner.
@@ -210,6 +211,7 @@ $('shareBtn').addEventListener('click', async () => {
   localStream.getVideoTracks()[0].addEventListener('ended', () => {
     $('shareBtn').textContent = 'Start Screen Share';
     $('shareBtn').disabled = false;
+    $('hostControls').classList.remove('hidden');
     Object.keys(pc).forEach((id) => pc[id].close());
     pc = {};
     clearVideo();
