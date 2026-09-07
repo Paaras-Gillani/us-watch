@@ -59,6 +59,16 @@ socket.on('joined', ({ code, isHost: host, participants }) => {
   }
 });
 
+// Room's shareable code changed (host clicked Add Participants again).
+// Doesn't touch anyone's connection — it's just the label everyone sees.
+socket.on('code-changed', ({ code }) => {
+  myCode = code;
+  $('roomCodeLabel').textContent = code;
+  if (!$('shareModal').classList.contains('hidden')) {
+    populateInviteModal();
+  }
+});
+
 // ---------- Participants ----------
 function renderParticipants(list) {
   const ul = $('participantList');
@@ -80,8 +90,7 @@ socket.on('participant-left', ({ username, wasHost, participants }) => {
   renderParticipants(participants);
   addSystemMsg(`${username} left${wasHost ? ' (host disconnected — sharing stopped)' : ''}.`);
   if (wasHost) {
-    $('remoteVideo').srcObject = null;
-    $('waitingMsg').classList.remove('hidden');
+    clearVideo();
   }
 });
 
@@ -120,12 +129,16 @@ function escapeHtml(str) {
 }
 
 // ---------- Invite modal ----------
-function openInviteModal() {
+function populateInviteModal() {
   $('shareCode').value = myCode;
   $('shareLink').value = `${window.location.origin}/?code=${myCode}`;
-  $('shareModal').classList.remove('hidden');
 }
-$('addParticipantsBtn').addEventListener('click', openInviteModal);
+$('addParticipantsBtn').addEventListener('click', () => {
+  // Ask the server for a brand-new code every time. The old one stops
+  // working immediately; nobody already in the room is affected.
+  socket.emit('regen-code');
+  $('shareModal').classList.remove('hidden');
+});
 $('closeModalBtn').addEventListener('click', () => $('shareModal').classList.add('hidden'));
 $('copyCodeBtn').addEventListener('click', () => copyField('shareCode'));
 $('copyLinkBtn').addEventListener('click', () => copyField('shareLink'));
@@ -138,29 +151,76 @@ function copyField(id) {
 // ---------- Leave ----------
 $('leaveBtn').addEventListener('click', () => window.location.reload());
 
+// ---------- Video status indicator ----------
+function setVideoState(state) {
+  // state: 'idle' | 'sharing' (host, red) | 'watching' (viewer, green)
+  const area = document.querySelector('.video-area');
+  const badge = $('liveBadge');
+  area.classList.remove('sharing', 'watching');
+  if (state === 'idle') {
+    badge.classList.add('hidden');
+    return;
+  }
+  area.classList.add(state);
+  badge.classList.remove('hidden');
+  badge.classList.toggle('watching', state === 'watching');
+  $('liveBadgeText').textContent = state === 'sharing' ? 'Sharing' : 'Live';
+}
+
+function clearVideo() {
+  $('remoteVideo').srcObject = null;
+  $('remoteVideo').muted = false;
+  $('waitingMsg').classList.remove('hidden');
+  setVideoState('idle');
+}
+
 // ---------- WebRTC screen share (mesh: host -> each viewer) ----------
 const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
 $('shareBtn').addEventListener('click', async () => {
   try {
-    localStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    localStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      // These constraints stop the browser from applying voice-call style
+      // processing (echo cancellation etc) to what should be clean movie/
+      // stream audio. This only ever captures the shared tab/screen's own
+      // audio — never your microphone or headset, regardless of what
+      // audio device you're using.
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+    });
   } catch (err) {
     addSystemMsg('Screen share was cancelled or blocked.');
     return;
   }
+
   $('shareBtn').textContent = 'Sharing…';
   $('shareBtn').disabled = true;
+
+  // Let the host see their own shared content, muted, so it's obvious
+  // sharing is actually working — not just a spinner.
+  $('remoteVideo').srcObject = localStream;
+  $('remoteVideo').muted = true;
+  $('waitingMsg').classList.add('hidden');
+  setVideoState('sharing');
+
+  // Tell the room a stream is available now — this catches viewers who
+  // joined before sharing started and already asked (and got nothing).
+  socket.emit('sharing-started');
+
   localStream.getVideoTracks()[0].addEventListener('ended', () => {
     $('shareBtn').textContent = 'Start Screen Share';
     $('shareBtn').disabled = false;
     Object.keys(pc).forEach((id) => pc[id].close());
     pc = {};
+    clearVideo();
+    socket.emit('sharing-stopped');
   });
 });
 
 // Viewer asked host for the stream
 socket.on('viewer-wants-stream', async ({ viewerId }) => {
   if (!localStream) return; // host hasn't started sharing yet
+  if (pc[viewerId]) pc[viewerId].close();
   const conn = new RTCPeerConnection(rtcConfig);
   pc[viewerId] = conn;
   localStream.getTracks().forEach((track) => conn.addTrack(track, localStream));
@@ -172,9 +232,21 @@ socket.on('viewer-wants-stream', async ({ viewerId }) => {
   socket.emit('signal', { to: viewerId, data: { sdp: offer } });
 });
 
-// Host becomes known to a viewer
+// Host becomes known to a viewer (fires right after joining a room that already has a host)
 socket.on('host-available', () => {
   socket.emit('request-stream');
+});
+
+// Host just started sharing — ask again in case our earlier request came too early
+socket.on('sharing-started', () => {
+  if (!isHost) socket.emit('request-stream');
+});
+
+socket.on('sharing-stopped', () => {
+  if (!isHost) {
+    addSystemMsg('Host stopped sharing.');
+    clearVideo();
+  }
 });
 
 // Generic signaling relay handler (works for both host and viewer roles)
@@ -183,11 +255,14 @@ socket.on('signal', async ({ from, data }) => {
 
   if (data.sdp && data.sdp.type === 'offer') {
     // We are the viewer receiving an offer from the host
+    if (conn) conn.close();
     conn = new RTCPeerConnection(rtcConfig);
     pc[from] = conn;
     conn.ontrack = (e) => {
       $('remoteVideo').srcObject = e.streams[0];
+      $('remoteVideo').muted = false;
       $('waitingMsg').classList.add('hidden');
+      setVideoState('watching');
     };
     conn.onicecandidate = (e) => {
       if (e.candidate) socket.emit('signal', { to: from, data: { candidate: e.candidate } });
