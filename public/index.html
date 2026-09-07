@@ -45,10 +45,16 @@
   <main class="room-body">
     <section class="video-area">
       <div id="liveBadge" class="live-badge hidden"><span class="dot"></span><span id="liveBadgeText">Sharing</span></div>
-      <video id="remoteVideo" autoplay playsinline></video>
+      <video id="remoteVideo" autoplay playsinline controls></video>
       <div id="hostControls" class="host-controls hidden">
         <button id="shareBtn" class="primary">Start Screen Share</button>
         <p class="hint">Share your screen or a browser tab playing your movie/stream. If you're sharing a Chrome tab, tick "Share tab audio" in the picker so sound comes through too.</p>
+      </div>
+      <div id="viewerControls" class="viewer-controls hidden">
+        <button id="reqBackBtn" title="Ask host to rewind 10s">⏪ 10s</button>
+        <button id="reqPauseBtn" title="Ask host to pause">⏸ Pause</button>
+        <button id="reqPlayBtn" title="Ask host to resume">▶ Resume</button>
+        <button id="reqFwdBtn" title="Ask host to skip 10s">10s ⏩</button>
       </div>
       <div id="waitingMsg" class="waiting-msg">Waiting for host to start sharing…</div>
     </section>
