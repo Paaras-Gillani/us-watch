@@ -129,6 +129,18 @@ io.on('connection', (socket) => {
     });
   });
 
+  // A viewer can't truly pause/seek the host's screen share (it's a live
+  // mirror, not a file we control) — so instead we relay a request to the
+  // host, who can act on it in their own player, and let everyone see the
+  // ask in chat for transparency.
+  socket.on('playback-request', ({ action, label }) => {
+    if (!joinedRoom || !rooms[joinedRoom]) return;
+    const hostId = rooms[joinedRoom].host;
+    if (!hostId || hostId === socket.id) return;
+    io.to(hostId).emit('playback-request', { username, action, label });
+    io.to(joinedRoom).emit('system-message', { text: `${username} requested: ${label}` });
+  });
+
   socket.on('disconnect', () => {
     if (!joinedRoom || !rooms[joinedRoom]) return;
     const room = rooms[joinedRoom];
