@@ -1,0 +1,13 @@
+{
+  "name": "us-watch",
+  "version": "1.0.0",
+  "description": "US Watch \u2014 watch movies and share your screen with friends. Built by Maisam Gillani.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
