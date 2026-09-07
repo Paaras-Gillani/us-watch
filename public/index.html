@@ -44,10 +44,11 @@
 
   <main class="room-body">
     <section class="video-area">
+      <div id="liveBadge" class="live-badge hidden"><span class="dot"></span><span id="liveBadgeText">Sharing</span></div>
       <video id="remoteVideo" autoplay playsinline></video>
       <div id="hostControls" class="host-controls hidden">
         <button id="shareBtn" class="primary">Start Screen Share</button>
-        <p class="hint">Share your screen or a browser tab playing your movie/stream — everyone in the room sees and hears it.</p>
+        <p class="hint">Share your screen or a browser tab playing your movie/stream. If you're sharing a Chrome tab, tick "Share tab audio" in the picker so sound comes through too.</p>
       </div>
       <div id="waitingMsg" class="waiting-msg">Waiting for host to start sharing…</div>
     </section>
@@ -71,7 +72,7 @@
 <div id="shareModal" class="modal hidden">
   <div class="modal-card">
     <h3>Invite friends</h3>
-    <p>Share this code or link — no account needed, they just enter it and join.</p>
+    <p>Share this code or link — no account needed, they just enter it and join. Opening this again issues a new code and retires this one.</p>
     <div class="copy-row">
       <input id="shareCode" readonly />
       <button id="copyCodeBtn">Copy</button>
