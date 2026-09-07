@@ -55,6 +55,7 @@ socket.on('joined', ({ code, isHost: host, participants }) => {
     $('waitingMsg').classList.add('hidden');
   } else {
     $('waitingMsg').classList.remove('hidden');
+    $('viewerControls').classList.remove('hidden');
     socket.emit('request-stream');
   }
 });
@@ -150,6 +151,43 @@ function copyField(id) {
 
 // ---------- Leave ----------
 $('leaveBtn').addEventListener('click', () => window.location.reload());
+
+// ---------- Playback requests (viewer -> host) ----------
+// A viewer can't actually pause/seek the host's live screen share — this
+// just asks the host, who can act on it in their own player.
+function sendPlaybackRequest(action, label, btn) {
+  socket.emit('playback-request', { action, label });
+  addSystemMsg(`You requested: ${label}`);
+  btn.disabled = true;
+  setTimeout(() => { btn.disabled = false; }, 4000);
+}
+$('reqPauseBtn').addEventListener('click', (e) => sendPlaybackRequest('pause', 'Pause', e.currentTarget));
+$('reqPlayBtn').addEventListener('click', (e) => sendPlaybackRequest('play', 'Resume', e.currentTarget));
+$('reqBackBtn').addEventListener('click', (e) => sendPlaybackRequest('back', 'Rewind 10s', e.currentTarget));
+$('reqFwdBtn').addEventListener('click', (e) => sendPlaybackRequest('forward', 'Skip ahead 10s', e.currentTarget));
+
+let toastTimer = null;
+function showToast(text) {
+  let toast = document.getElementById('reqToast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'reqToast';
+    toast.className = 'req-toast';
+    document.querySelector('.video-area').appendChild(toast);
+  }
+  toast.textContent = text;
+  toast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 5000);
+}
+
+// Only the host receives this (server targets it directly)
+socket.on('playback-request', ({ username: who, label }) => {
+  showToast(`🔔 ${who} wants: ${label}`);
+});
+
+// Everyone sees the request logged in chat too, for transparency
+socket.on('system-message', ({ text }) => addSystemMsg(text));
 
 // ---------- Video status indicator ----------
 function setVideoState(state) {
