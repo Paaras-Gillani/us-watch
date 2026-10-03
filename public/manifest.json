@@ -1,0 +1,15 @@
+{
+  "name": "US Watch",
+  "short_name": "US Watch",
+  "description": "Watch movies and shows with friends — screen share, chat, and voice, together.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#15141c",
+  "theme_color": "#15141c",
+  "orientation": "any",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
