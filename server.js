@@ -13,9 +13,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 // rooms are keyed by a stable internal roomId that never changes for a room's lifetime.
 // inviteCodes maps the *visible, shareable* code -> roomId, and can be rotated freely
 // without touching anyone's socket.io room membership.
-// rooms = { roomId: { host: socketId, participants: { socketId: username }, currentCode } }
+// rooms = { roomId: { host: socketId, participants: { socketId: {name, color} }, currentCode } }
 const rooms = {};
 const inviteCodes = {};
+
+// A fixed, high-contrast palette so every participant gets a distinct,
+// consistent chat/name color for the life of the room.
+const COLOR_PALETTE = ['#7d72c9', '#e8a33d', '#4caf7d', '#c9614f', '#5aa9c9', '#c97db0', '#c9b25a', '#8f83db'];
 
 function generateCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no confusing chars
@@ -24,6 +28,10 @@ function generateCode() {
     code = Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
   } while (inviteCodes[code]);
   return code;
+}
+
+function publicParticipants(room) {
+  return Object.entries(room.participants).map(([id, p]) => ({ id, name: p.name, color: p.color }));
 }
 
 app.get('/api/create-room', (req, res) => {
@@ -60,33 +68,53 @@ io.on('connection', (socket) => {
       }
     }
 
+    const room = rooms[roomId];
     joinedRoom = roomId;
     username = (name || 'Guest').slice(0, 24);
     socket.join(roomId);
-    rooms[roomId].participants[socket.id] = username;
 
-    if (asHost || !rooms[roomId].host) {
-      rooms[roomId].host = socket.id;
+    const color = COLOR_PALETTE[Object.keys(room.participants).length % COLOR_PALETTE.length];
+    room.participants[socket.id] = { name: username, color };
+
+    if (asHost || !room.host) {
+      room.host = socket.id;
     }
 
-    const isHost = rooms[roomId].host === socket.id;
+    const isHost = room.host === socket.id;
 
     socket.emit('joined', {
-      code: rooms[roomId].currentCode,
+      code: room.currentCode,
       isHost,
-      participants: Object.values(rooms[roomId].participants),
+      selfId: socket.id,
+      color,
+      participants: publicParticipants(room),
     });
 
-    socket.to(roomId).emit('participant-joined', { username, participants: Object.values(rooms[roomId].participants) });
+    socket.to(roomId).emit('participant-joined', {
+      id: socket.id,
+      username,
+      color,
+      participants: publicParticipants(room),
+    });
 
-    if (rooms[roomId].host && rooms[roomId].host !== socket.id) {
-      socket.emit('host-available', { hostId: rooms[roomId].host });
+    if (room.host && room.host !== socket.id) {
+      socket.emit('host-available', { hostId: room.host });
     }
   });
 
-  // WebRTC signaling relay (mesh: host <-> each viewer)
+  // WebRTC signaling relay for the screen share (mesh: host <-> each viewer)
   socket.on('signal', ({ to, data }) => {
     io.to(to).emit('signal', { from: socket.id, data });
+  });
+
+  // Separate signaling channel for voice chat (mic audio), kept distinct
+  // from screen-share signaling since they're independent peer connections.
+  socket.on('voice-signal', ({ to, data }) => {
+    io.to(to).emit('voice-signal', { from: socket.id, data });
+  });
+
+  socket.on('voice-stopped', () => {
+    if (joinedRoom) socket.to(joinedRoom).emit('voice-stopped', { from: socket.id });
   });
 
   socket.on('request-stream', () => {
@@ -121,9 +149,11 @@ io.on('connection', (socket) => {
   });
 
   socket.on('chat-message', ({ text }) => {
-    if (!joinedRoom || !text) return;
+    if (!joinedRoom || !rooms[joinedRoom] || !text) return;
+    const me = rooms[joinedRoom].participants[socket.id];
     io.to(joinedRoom).emit('chat-message', {
       username,
+      color: me ? me.color : null,
       text: String(text).slice(0, 500),
       time: Date.now(),
     });
@@ -149,9 +179,10 @@ io.on('connection', (socket) => {
     if (wasHost) room.host = null;
 
     io.to(joinedRoom).emit('participant-left', {
+      id: socket.id,
       username,
       wasHost,
-      participants: Object.values(room.participants),
+      participants: publicParticipants(room),
     });
 
     if (Object.keys(room.participants).length === 0) {
