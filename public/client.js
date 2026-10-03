@@ -137,10 +137,14 @@ $('chatForm').addEventListener('submit', (e) => {
 });
 
 socket.on('chat-message', ({ username, color, text }) => {
+  const mine = username === myName;
   const div = document.createElement('div');
-  div.className = 'chat-msg';
-  const style = color ? ` style="color:${color}"` : '';
-  div.innerHTML = `<span class="who"${style}>${escapeHtml(username)}</span>${escapeHtml(text)}`;
+  div.className = `chat-msg ${mine ? 'mine' : 'theirs'}`;
+  // Your own messages skip the name label (it's obviously you, like any
+  // chat app) and align right; everyone else's shows their colored name
+  // and aligns left, since this is a group room, not a 1:1 chat.
+  const nameHtml = mine ? '' : `<span class="who" style="color:${color || 'inherit'}">${escapeHtml(username)}</span>`;
+  div.innerHTML = `${nameHtml}<span class="bubble-text">${escapeHtml(text)}</span>`;
   const box = $('chatMessages');
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
@@ -148,7 +152,7 @@ socket.on('chat-message', ({ username, color, text }) => {
 
 function addSystemMsg(text) {
   const div = document.createElement('div');
-  div.className = 'chat-msg';
+  div.className = 'chat-msg system-msg';
   div.innerHTML = `<span class="who system">${escapeHtml(text)}</span>`;
   const box = $('chatMessages');
   box.appendChild(div);
